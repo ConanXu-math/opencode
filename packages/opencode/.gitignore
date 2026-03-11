@@ -3,3 +3,7 @@ dist
 gen
 app.log
 src/provider/models-snapshot.ts
+__pycache__/
+*.pyc
+.opencode/
+optimized/

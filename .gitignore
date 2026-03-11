@@ -23,6 +23,11 @@ target
 .scripts
 .direnv/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Local dev files
 opencode-dev
 logs/

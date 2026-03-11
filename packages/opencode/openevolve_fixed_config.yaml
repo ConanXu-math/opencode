@@ -1,0 +1,32 @@
+# OpenEvolve 永久配置 - DeepSeek
+llm:
+  models:
+    - name: "deepseek-chat"
+      api_key: "sk-968853b16b864c3681edbfe5ff4675ae"
+      api_base: "https://api.deepseek.com/v1"
+      temperature: 0.7
+      max_tokens: 4000
+  api_base: "https://api.deepseek.com/v1"
+  temperature: 0.7
+  max_tokens: 4000
+
+evolution:
+  population_size: 50
+  num_islands: 3
+  crossover_rate: 0.8
+  mutation_rate: 0.2
+  elitism_count: 5
+  max_program_length: 1000
+
+evaluation:
+  timeout_seconds: 30
+  max_memory_mb: 1024
+  cascade_evaluation: false
+
+logging:
+  level: "INFO"
+  file: "evolution.log"
+
+prompt:
+  system_template: "evaluator_system_message"
+  user_template: null
