@@ -87,8 +87,9 @@ class AutoEvaluatorSystem:
         result = self.generate_for_code(code, output_dir)
 
         if not result.get("success"):
-            print(f"❌ 评估器生成失败: {result.get('error')}")
-            return None
+            error_msg = result.get("error", "未知错误")
+            print(f"❌ 评估器生成失败: {error_msg}")
+            return {"success": False, "error": error_msg}
 
         code_path = result["code_path"]
         evaluator_path = result["evaluator_path"]

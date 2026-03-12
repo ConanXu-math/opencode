@@ -2,22 +2,26 @@
 
 ## 🚀 快速开始
 
-### 方式1: 交互式界面
+### 方式1: 统一接口优化
 
 ```bash
-python -m open_evolve.main interactive
+python -m open_evolve.main <文件.py> --iteration 50 --outdir optimized
 ```
 
-### 方式2: 一键优化
+### 方式2: 代码分析
 
 ```bash
-python -m open_evolve.main optimize <代码文件> --iterations 50
+python -m open_evolve.main "def fibonacci(n): return n if n <= 1 else fibonacci(n-1) + fibonacci(n-2)" --mode analyze
 ```
 
 ### 方式3: 在opencode中直接调用
 
 ```
-@open-evolve-python 优化以下代码...
+@openevolve levenshtein_optimization.py
+
+@openevolve slow_algorithm.py --iteration 100 --outdir optimized_results
+
+@openevolve 请分析并优化这段斐波那契数列算法
 ```
 
 ## 📋 可用命令
@@ -130,4 +134,4 @@ A: 检查 `openevolve_fixed_config.yaml` 中的API密钥
 4. **验证结果**: 检查优化后的代码正确性
 5. **集成应用**: 将优化代码应用到项目中
 
-**提示**: 在opencode中，可以直接使用 `@open-evolve-python` 调用优化功能。
+**提示**: 在opencode中，可以直接使用 `@openevolve` 调用优化功能。

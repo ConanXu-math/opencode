@@ -9,14 +9,14 @@
 ## 🚀 快速命令
 
 ```bash
-# 交互式界面
-python -m open_evolve.main interactive
+# 统一接口优化
+python -m open_evolve.main my_code.py --iteration 50 --outdir optimized
 
-# 快速优化代码
-python -m open_evolve.main optimize my_code.py
+# 代码分析模式
+python -m open_evolve.main "def fibonacci(n): return n if n <= 1 else fibonacci(n-1) + fibonacci(n-2)" --mode analyze
 
-# 生成评估器
-python -m open_evolve.main generate my_code.py
+# 算法发现模式
+python -m open_evolve.main sorting_algorithm.py --mode discover --iteration 100
 ```
 
 ## 📁 模块结构
@@ -70,7 +70,11 @@ result = system.auto_evolve(code, iterations=50)
 ### 在opencode中
 
 ```
-@open-evolve-python 优化以下代码...
+@openevolve levenshtein_optimization.py
+
+@openevolve slow_algorithm.py --iteration 100 --outdir optimized_results
+
+@openevolve 请分析并优化这段斐波那契数列算法
 ```
 
 ## 🔗 相关文件

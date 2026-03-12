@@ -26,27 +26,27 @@ open_evolve/
 
 ## 🚀 快速开始
 
-### 1. 使用统一入口点
+### 1. 使用统一接口
 
 ```bash
-# 交互式界面
-python -m open_evolve.main interactive
+# 优化Python文件
+python -m open_evolve.main my_code.py --iteration 50 --outdir optimized
 
-# 快速优化
-python -m open_evolve.main optimize my_code.py --iterations 50
+# 分析代码片段
+python -m open_evolve.main "def fibonacci(n): return n if n <= 1 else fibonacci(n-1) + fibonacci(n-2)" --mode analyze
 
-# 生成评估器
-python -m open_evolve.main generate my_code.py
+# 算法发现模式
+python -m open_evolve.main sorting_algorithm.py --mode discover --iteration 100
 ```
 
-### 2. 直接运行脚本
+### 2. 命令行参数
 
 ```bash
-# 交互式界面
-python open_evolve/main.py interactive
+# 基本用法
+python open_evolve/main.py <file_or_code>
 
-# 快速优化
-python open_evolve/main.py optimize my_code.py
+# 带参数
+python open_evolve/main.py my_code.py --iteration 100 --outdir results --mode optimize
 ```
 
 ### 3. 作为模块导入
@@ -231,4 +231,4 @@ A: 检查配置文件中的API密钥
 4. **验证结果**: 检查优化后的代码正确性
 5. **集成应用**: 将优化代码应用到项目中
 
-**提示**: 在opencode中，可以直接使用 `@open-evolve-python` 调用优化功能。
+**提示**: 在opencode中，可以直接使用 `@openevolve` 调用优化功能。
