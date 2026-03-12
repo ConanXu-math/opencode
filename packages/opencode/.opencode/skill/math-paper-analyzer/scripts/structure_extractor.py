@@ -12,7 +12,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
-# ── Phase 1: Regex patterns ───────────────────────────────────────
+# ── Regex patterns for structure extraction ──────────────────────────────
 
 _SECTION_RE = re.compile(
     r"^(?:#{1,3}\s+)?"
@@ -45,441 +45,410 @@ _DISPLAY_MATH_RE = re.compile(
     re.DOTALL,
 )
 
+# Pattern for inline math (for reference)
+_INLINE_MATH_RE = re.compile(r"\$(.+?)\$|\\\((.+?)\\\)", re.DOTALL)
+
+# Pattern for references (e.g., [1], [2-5], etc.)
+_REFERENCE_RE = re.compile(r"\[(\d+(?:-\d+)?(?:,\s*\d+)*)\]")
+
+# Pattern for authors and affiliations
+_AUTHOR_RE = re.compile(
+    r"^(?:(?:By\s+)|(?:Authors?:\s*))?(.+?)(?:\s*,\s*(.+))?$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Pattern for abstract
+_ABSTRACT_RE = re.compile(
+    r"^(?:Abstract|摘要)[:\s]*\n*(.+?)(?=\n\n|\n\s*\d|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Pattern for keywords
+_KEYWORDS_RE = re.compile(
+    r"^(?:Keywords?|关键词)[:\s]*\n*(.+?)(?=\n\n|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _level_from_label(label: str) -> int:
+    """Calculate section level from label (e.g., '1.2.3' -> level 3)."""
     return label.count(".") + 1
 
 
-def _regex_extract(pages: List[str]) -> Dict:
-    """Phase 1: extract raw structure using regex."""
-    sections: List[Dict] = []
-    theorems: List[Dict] = []
-    proofs: List[Dict] = []
-    definitions: List[Dict] = []
-    key_equations: List[Dict] = []
+def extract_structure(ocr_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract structured information from OCR text using regex patterns.
 
-    for page_idx, text in enumerate(pages):
-        page_num = page_idx + 1
+    Args:
+        ocr_data: Output from OCRExtractor.extract()
 
-        for m in _SECTION_RE.finditer(text):
-            label = m.group(1)
-            title = m.group(2).strip()
+    Returns:
+        Dictionary with extracted structure
+    """
+    logger.info("Extracting structure from OCR data")
+
+    # Initialize result structure
+    result = {
+        "metadata": {
+            "extraction_time": datetime.now().isoformat(),
+            "source": ocr_data.get("metadata", {}).get("source", "unknown"),
+        },
+        "sections": [],
+        "theorems": [],
+        "definitions": [],
+        "proofs": [],
+        "equations": [],
+        "references": [],
+        "abstract": "",
+        "keywords": [],
+        "authors": [],
+    }
+
+    # Extract from each page
+    pages = ocr_data.get("pages", [])
+    for page in pages:
+        page_num = page.get("number", 0)
+        text = page.get("text", "")
+
+        if not text:
+            continue
+
+        # Extract sections
+        for match in _SECTION_RE.finditer(text):
+            label = match.group(1)
+            title = match.group(2).strip()
+
+            # Filter out very long or very short titles
             if len(title) > 200 or len(title) < 2:
                 continue
-            sections.append(
+
+            result["sections"].append(
                 {
                     "id": f"sec{label}",
+                    "label": label,
                     "title": title,
                     "level": _level_from_label(label),
                     "page": page_num,
+                    "content_preview": text[:200] if text else "",
                 }
             )
 
-        for m in _THEOREM_RE.finditer(text):
-            label = m.group("label")
-            theorems.append(
+        # Extract theorems, lemmas, propositions, corollaries
+        for match in _THEOREM_RE.finditer(text):
+            thm_type = match.group("type")
+            label = match.group("label")
+            statement = match.group("statement").strip()
+
+            # Find which section this theorem belongs to
+            section_id = _find_parent_section(label, result["sections"])
+
+            result["theorems"].append(
                 {
                     "id": f"thm{label}",
-                    "label": f"{m.group('type')} {label}",
-                    "type": m.group("type").lower(),
-                    "statement": m.group("statement").strip()[:500],
+                    "type": thm_type,
+                    "label": label,
+                    "statement": statement,
                     "page": page_num,
+                    "section_id": section_id,
                 }
             )
 
-        for m in _PROOF_RE.finditer(text):
-            proofs.append(
-                {
-                    "id": f"prf_p{page_num}_{m.start()}",
-                    "page_start": page_num,
-                    "page_end": page_num,
-                }
-            )
+        # Extract definitions
+        for match in _DEFINITION_RE.finditer(text):
+            def_type = match.group("type")
+            label = match.group("label")
+            content = match.group("content").strip()
 
-        for m in _DEFINITION_RE.finditer(text):
-            label = m.group("label")
-            definitions.append(
+            section_id = _find_parent_section(label, result["sections"])
+
+            result["definitions"].append(
                 {
                     "id": f"def{label}",
-                    "label": f"{m.group('type')} {label}",
-                    "content": m.group("content").strip()[:400],
+                    "type": def_type,
+                    "label": label,
+                    "content": content,
                     "page": page_num,
+                    "section_id": section_id,
                 }
             )
 
-        for m in _DISPLAY_MATH_RE.finditer(text):
-            latex = m.group(1) or m.group(2)
-            if latex and len(latex.strip()) > 5:
-                key_equations.append(
+        # Extract proofs
+        for match in _PROOF_RE.finditer(text):
+            # Get context around the proof keyword
+            start = max(0, match.start() - 100)
+            end = min(len(text), match.end() + 300)
+            context = text[start:end].strip()
+
+            result["proofs"].append(
+                {
+                    "id": f"proof{len(result['proofs']) + 1}",
+                    "keyword": match.group("keyword"),
+                    "context": context,
+                    "page": page_num,
+                    "position": match.start(),
+                }
+            )
+
+        # Extract display equations
+        for match in _DISPLAY_MATH_RE.finditer(text):
+            formula = match.group(1) or match.group(2)
+            if formula:
+                result["equations"].append(
                     {
-                        "id": f"eq_p{page_num}_{m.start()}",
-                        "latex": latex.strip(),
+                        "id": f"eq{len(result['equations']) + 1}",
+                        "formula": formula.strip(),
                         "page": page_num,
+                        "position": match.start(),
+                        "type": "display",
                     }
                 )
 
-    return {
-        "sections": sections,
-        "theorems": theorems,
-        "proofs": proofs,
-        "definitions": definitions,
-        "key_equations": key_equations,
-    }
-
-
-# ── Phase 2: LLM refinement ──────────────────────────────────────
-
-_LLM_PROMPT = """\
-你是一个数学论文结构分析器。下面是一篇论文的 OCR 文本（已用正则做了初步结构提取）。
-
-请你：
-1. 修正和补充正则结果中遗漏或错误的条目
-2. 为每个 theorem/definition 标注它所属的 section_id
-3. 为每个 proof 标注它证明了哪个 theorem（填 proves 字段）
-4. 填写 title（论文标题）和 summary（1-2 句话概括论文核心内容）
-5. 若正则结果中某些条目明显是误识别（如把正文段落当成 section），请删除
-
-严格输出 JSON，不要加 ```json 或其他标记，格式如下：
-{
-  "title": "...",
-  "summary": "...",
-  "sections": [{"id": "sec1", "title": "...", "level": 1, "page": 1}, ...],
-  "theorems": [{"id": "thm3.1", "label": "Theorem 3.1", "type": "theorem", "statement": "...", "section_id": "sec3", "page": 5}, ...],
-  "proofs": [{"id": "prf1", "proves": "thm3.1", "page_start": 5, "page_end": 6}, ...],
-  "definitions": [{"id": "def2.1", "label": "Definition 2.1", "content": "...", "section_id": "sec2", "page": 3}, ...],
-  "key_equations": [{"id": "eq1", "latex": "...", "page": 5}, ...]
-}
-
-=== 正则提取结果 ===
-{regex_json}
-
-=== 论文全文（前 6000 字） ===
-{paper_text}
-"""
-
-
-def _call_llm_for_refinement(
-    regex_result: Dict,
-    pages: List[str],
-    llm_api_key: str,
-    llm_base_url: str,
-    llm_model: str,
-) -> Optional[Dict]:
-    """Use LLM to refine the regex-extracted structure."""
-    full_text = "\n\n".join(
-        f"[第{i + 1}页]\n{t}" for i, t in enumerate(pages) if t.strip()
-    )
-    truncated = full_text[:6000]
-
-    prompt = _LLM_PROMPT.format(
-        regex_json=json.dumps(regex_result, ensure_ascii=False, indent=2),
-        paper_text=truncated,
-    )
-
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(
-            api_key=llm_api_key,
-            base_url=llm_base_url,
-        )
-        response = client.chat.completions.create(
-            model=llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=4096,
-        )
-        raw = (response.choices[0].message.content or "").strip()
-        if not raw:
-            logger.warning("LLM returned empty response")
-            return None
-        # Strip markdown code fences if present
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-        # Try to extract JSON object even if surrounded by extra text
-        brace_start = raw.find("{")
-        brace_end = raw.rfind("}")
-        if brace_start != -1 and brace_end > brace_start:
-            raw = raw[brace_start : brace_end + 1]
-        return json.loads(_fix_json_escapes(raw))
-    except Exception as e:
-        logger.warning("LLM refinement failed, using regex results: %s", e)
-        return None
-
-
-# ── Paper summary extraction (LLM) ────────────────────────────────
-
-_SUMMARY_PROMPT = """\
-你是一个数学论文分析专家。请阅读以下论文的结构骨架和 OCR 原文，生成一份高层概要。
-
-要求：
-1. title: 论文标题
-2. abstract: 1-2 段概述论文的主要研究内容和贡献（中文）
-3. proof_approaches: 每个主要定理的证明思路（1-2句），格式为 {{"Theorem 3.1": "通过构造...", ...}}
-4. core_techniques: 论文用到的核心方法/技巧列表（如 ["鸽巢原理", "概率方法"]）
-5. field_tags: 论文所属数学领域，选 2-3 个（如 ["图论", "组合优化"]）
-6. content_tags: 论文研究内容的关键词，选 2-4 个（如 ["匹配存在性条件", "Hall定理推广"]）
-7. technique_tags: 论文用到的方法/技巧关键词，选 2-4 个（如 ["构造性证明", "鸽巢原理"]）
-
-注意：
-- field_tags 描述论文属于哪个数学分支/领域
-- content_tags 描述论文"做了什么"（研究的具体问题）
-- technique_tags 描述论文"怎么做的"（用了什么方法/工具）
-- 三类标签不要重复，各自侧重不同维度
-
-严格输出 JSON，不要加 ```json 或其他标记：
-{{
-  "title": "...",
-  "abstract": "...",
-  "proof_approaches": {{"Theorem X": "...", ...}},
-  "core_techniques": ["...", ...],
-  "field_tags": ["...", ...],
-  "content_tags": ["...", ...],
-  "technique_tags": ["...", ...]
-}}
-
-=== 论文结构骨架 ===
-{structure_skeleton}
-
-=== 论文原文（前 8000 字） ===
-{paper_text}
-"""
-
-
-def extract_paper_summary(
-    pages: List[str],
-    structure: Dict,
-    llm_api_key: str,
-    llm_base_url: str,
-    llm_model: str,
-) -> Optional[Dict]:
-    """Use LLM to generate a high-level summary with multi-dimensional tags.
-
-    Args:
-        pages: list of per-page OCR text strings.
-        structure: structure dict from extract_paper_structure().
-        llm_api_key: OpenAI API key.
-        llm_base_url: OpenAI compatible API base URL.
-        llm_model: Model ID.
-
-    Returns:
-        Summary dict with title, abstract, proof_approaches, core_techniques,
-        field_tags, content_tags, technique_tags. None on failure.
-    """
-    skeleton_parts = []
-    if structure.get("title"):
-        skeleton_parts.append(f"标题: {structure['title']}")
-    if structure.get("summary"):
-        skeleton_parts.append(f"概要: {structure['summary']}")
-    for sec in structure.get("sections", []):
-        indent = "  " * (sec.get("level", 1) - 1)
-        skeleton_parts.append(
-            f"{indent}[{sec['id']}] {sec.get('title', '')} (p.{sec.get('page', '?')})"
-        )
-    for thm in structure.get("theorems", []):
-        skeleton_parts.append(
-            f"  {thm.get('label', thm['id'])}: {thm.get('statement', '')[:100]}"
-        )
-    for defn in structure.get("definitions", []):
-        skeleton_parts.append(
-            f"  {defn.get('label', defn['id'])}: {defn.get('content', '')[:80]}"
-        )
-    skeleton_text = "\n".join(skeleton_parts) if skeleton_parts else "(无结构信息)"
-
-    full_text = "\n\n".join(
-        f"[第{i + 1}页]\n{t}" for i, t in enumerate(pages) if t.strip()
-    )
-    truncated = full_text[:8000]
-
-    prompt = _SUMMARY_PROMPT.format(
-        structure_skeleton=skeleton_text,
-        paper_text=truncated,
-    )
-
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(
-            api_key=llm_api_key,
-            base_url=llm_base_url,
-        )
-        response = client.chat.completions.create(
-            model=llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=4096,
-        )
-        raw = (response.choices[0].message.content or "").strip()
-        if not raw:
-            logger.warning("LLM summary returned empty response")
-            return None
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-        brace_start = raw.find("{")
-        brace_end = raw.rfind("}")
-        if brace_start != -1 and brace_end > brace_start:
-            raw = raw[brace_start : brace_end + 1]
-        result = json.loads(_fix_json_escapes(raw))
-        expected_keys = {
-            "title",
-            "abstract",
-            "proof_approaches",
-            "core_techniques",
-            "field_tags",
-            "content_tags",
-            "technique_tags",
-        }
-        for key in expected_keys:
-            if key not in result:
-                result[key] = (
-                    {}
-                    if key == "proof_approaches"
-                    else ([] if key != "title" and key != "abstract" else "")
+        # Extract references (only from first few pages typically)
+        if page_num <= 3:  # References usually in first few pages
+            for match in _REFERENCE_RE.finditer(text):
+                ref_text = match.group(1)
+                result["references"].append(
+                    {
+                        "id": f"ref{len(result['references']) + 1}",
+                        "text": ref_text,
+                        "page": page_num,
+                        "position": match.start(),
+                    }
                 )
-        return result
-    except Exception as e:
-        logger.warning("LLM summary extraction failed: %s", e)
-        return None
+
+    # Extract metadata from first page
+    if pages:
+        first_page_text = pages[0].get("text", "")
+
+        # Extract abstract
+        abstract_match = _ABSTRACT_RE.search(first_page_text)
+        if abstract_match:
+            result["abstract"] = abstract_match.group(1).strip()
+
+        # Extract keywords
+        keywords_match = _KEYWORDS_RE.search(first_page_text)
+        if keywords_match:
+            keywords_text = keywords_match.group(1).strip()
+            # Split by commas, semicolons, or newlines
+            keywords = re.split(r"[,\n;]+", keywords_text)
+            result["keywords"] = [k.strip() for k in keywords if k.strip()]
+
+        # Extract authors (simple pattern)
+        # Look for common author patterns in first 1000 chars
+        first_part = first_page_text[:1000]
+        for line in first_part.split("\n"):
+            line = line.strip()
+            if line and len(line) < 200:  # Reasonable author line length
+                author_match = _AUTHOR_RE.match(line)
+                if author_match:
+                    author_info = author_match.group(1).strip()
+                    result["authors"].append(
+                        {
+                            "name": author_info,
+                            "affiliation": author_match.group(2).strip()
+                            if author_match.group(2)
+                            else "",
+                        }
+                    )
+
+    logger.info(
+        "Structure extraction completed: %d sections, %d theorems, %d definitions",
+        len(result["sections"]),
+        len(result["theorems"]),
+        len(result["definitions"]),
+    )
+
+    return result
 
 
-# ── Public API ────────────────────────────────────────────────────
-
-
-def extract_paper_structure(
-    pages: List[str],
-    llm_api_key: Optional[str] = None,
-    llm_base_url: Optional[str] = None,
-    llm_model: Optional[str] = None,
-) -> Dict:
-    """Extract structured outline from OCR page texts.
+def _find_parent_section(label: str, sections: List[Dict]) -> Optional[str]:
+    """
+    Find the parent section for a theorem/definition label.
 
     Args:
-        pages: list of per-page OCR text strings.
-        llm_api_key: OpenAI API key (optional; skips Phase 2 if None).
-        llm_base_url: OpenAI compatible API base URL.
-        llm_model: Model ID.
+        label: Theorem/definition label (e.g., "1.2.3")
+        sections: List of extracted sections
 
     Returns:
-        Standardised structure dict.
+        Section ID or None
     """
-    regex_result = _regex_extract(pages)
+    if not sections:
+        return None
 
-    if llm_api_key and llm_base_url and llm_model:
-        refined = _call_llm_for_refinement(
-            regex_result, pages, llm_api_key, llm_base_url, llm_model
-        )
-        if refined is not None:
-            for key in (
-                "title",
-                "summary",
-                "sections",
-                "theorems",
-                "proofs",
-                "definitions",
-                "key_equations",
-            ):
-                if key in refined:
-                    regex_result[key] = refined[key]
+    # Convert label to numeric parts
+    label_parts = []
+    for part in label.split("."):
+        if part.isdigit():
+            label_parts.append(int(part))
+        else:
+            break
 
-    return regex_result
+    best_match = None
+    best_score = -1
+
+    for section in sections:
+        section_label = section.get("label", "")
+        section_parts = []
+        for part in section_label.split("."):
+            if part.isdigit():
+                section_parts.append(int(part))
+            else:
+                break
+
+        # Check if this section is a parent of the label
+        if len(section_parts) <= len(label_parts):
+            match = True
+            for i in range(len(section_parts)):
+                if i >= len(label_parts) or section_parts[i] != label_parts[i]:
+                    match = False
+                    break
+
+            if match:
+                # Score: more specific matches are better
+                score = len(section_parts)
+                if score > best_score:
+                    best_score = score
+                    best_match = section["id"]
+
+    return best_match
 
 
-def format_structure_for_display(structure: Dict) -> str:
-    """Format structure dict into readable markdown text."""
-    lines: List[str] = []
+def format_structure_for_display(structure: Dict[str, Any]) -> str:
+    """
+    Format extracted structure into readable text for LLM analysis.
 
-    title = structure.get("title", "")
-    if title:
-        lines.append(f"# {title}\n")
+    Args:
+        structure: Output from extract_structure()
 
-    summary = structure.get("summary", "")
-    if summary:
-        lines.append(f"**摘要**: {summary}\n")
+    Returns:
+        Formatted text for LLM prompt
+    """
+    lines = []
 
+    # Metadata
+    lines.append("# Extracted Paper Structure")
+    lines.append(f"Source: {structure.get('metadata', {}).get('source', 'unknown')}")
+    lines.append(
+        f"Extraction time: {structure.get('metadata', {}).get('extraction_time', 'unknown')}"
+    )
+    lines.append("")
+
+    # Abstract
+    abstract = structure.get("abstract", "")
+    if abstract:
+        lines.append("## Abstract")
+        lines.append(abstract)
+        lines.append("")
+
+    # Keywords
+    keywords = structure.get("keywords", [])
+    if keywords:
+        lines.append("## Keywords")
+        lines.append(", ".join(keywords))
+        lines.append("")
+
+    # Authors
+    authors = structure.get("authors", [])
+    if authors:
+        lines.append("## Authors")
+        for author in authors:
+            name = author.get("name", "")
+            affiliation = author.get("affiliation", "")
+            if affiliation:
+                lines.append(f"- {name} ({affiliation})")
+            else:
+                lines.append(f"- {name}")
+        lines.append("")
+
+    # Sections
     sections = structure.get("sections", [])
     if sections:
-        lines.append("## 章节结构\n")
-        for sec in sections:
+        lines.append("## Sections")
+        for sec in sorted(sections, key=lambda x: x.get("label", "")):
             indent = "  " * (sec.get("level", 1) - 1)
             lines.append(
-                f"{indent}- **{sec['id']}** {sec.get('title', '')} (p.{sec.get('page', '?')})"
+                f"{indent}- **{sec['label']}** {sec.get('title', '')} (p.{sec.get('page', '?')})"
             )
+        lines.append("")
 
+    # Theorems
     theorems = structure.get("theorems", [])
     if theorems:
-        lines.append("\n## 定理/引理\n")
-        for thm in theorems:
-            stmt = thm.get("statement", "")[:120]
-            sec = f" [{thm.get('section_id', '')}]" if thm.get("section_id") else ""
-            lines.append(
-                f"- **{thm.get('label', thm['id'])}** (p.{thm.get('page', '?')}){sec}: {stmt}"
+        lines.append("## Theorems, Lemmas, Propositions, Corollaries")
+        for thm in sorted(theorems, key=lambda x: x.get("label", "")):
+            thm_type = thm.get("type", "Theorem")
+            label = thm.get("label", "")
+            statement = thm.get("statement", "")[:150]
+            section = (
+                f" [Section {thm.get('section_id', '').replace('sec', '')}]"
+                if thm.get("section_id")
+                else ""
             )
+            lines.append(
+                f"- **{thm_type} {label}** (p.{thm.get('page', '?')}){section}: {statement}"
+            )
+        lines.append("")
 
+    # Definitions
     definitions = structure.get("definitions", [])
     if definitions:
-        lines.append("\n## 定义\n")
-        for d in definitions:
+        lines.append("## Definitions")
+        for d in sorted(definitions, key=lambda x: x.get("label", "")):
+            def_type = d.get("type", "Definition")
+            label = d.get("label", "")
             content = d.get("content", "")[:120]
-            lines.append(
-                f"- **{d.get('label', d['id'])}** (p.{d.get('page', '?')}): {content}"
+            section = (
+                f" [Section {d.get('section_id', '').replace('sec', '')}]"
+                if d.get("section_id")
+                else ""
             )
+            lines.append(
+                f"- **{def_type} {label}** (p.{d.get('page', '?')}){section}: {content}"
+            )
+        lines.append("")
 
+    # Proofs
     proofs = structure.get("proofs", [])
     if proofs:
-        lines.append("\n## 证明\n")
-        for p in proofs:
-            proves = f" → {p['proves']}" if p.get("proves") else ""
+        lines.append("## Proof Contexts")
+        for i, proof in enumerate(proofs):
+            lines.append(f"### Proof {i + 1} (p.{proof.get('page', '?')})")
+            lines.append(proof.get("context", "")[:200])
+            lines.append("")
+
+    # Equations
+    equations = structure.get("equations", [])
+    if equations:
+        lines.append("## Key Equations")
+        for i, eq in enumerate(equations[:10]):  # Show first 10 equations
             lines.append(
-                f"- {p['id']} (p.{p.get('page_start', '?')}-{p.get('page_end', '?')}){proves}"
+                f"{i + 1}. Page {eq.get('page', '?')}: $${eq.get('formula', '')}$$"
             )
+        if len(equations) > 10:
+            lines.append(f"... and {len(equations) - 10} more equations")
+        lines.append("")
 
-    key_eqs = structure.get("key_equations", [])
-    if key_eqs:
-        lines.append("\n## 关键公式\n")
-        for eq in key_eqs[:10]:
-            lines.append(f"- (p.{eq.get('page', '?')}) ${eq.get('latex', '')[:80]}$")
-
-    return "\n".join(lines)
-
-
-def format_summary_for_display(summary: Dict) -> str:
-    """Format summary dict into readable markdown text."""
-    lines: List[str] = []
-
-    title = summary.get("title", "")
-    if title:
-        lines.append(f"# {title}\n")
-
-    abstract = summary.get("abstract", "")
-    if abstract:
-        lines.append("## 论文摘要\n")
-        lines.append(f"{abstract}\n")
-
-    proof_approaches = summary.get("proof_approaches", {})
-    if proof_approaches:
-        lines.append("## 证明思路\n")
-        for thm, approach in proof_approaches.items():
-            lines.append(f"- **{thm}**: {approach}")
-
-    core_techniques = summary.get("core_techniques", [])
-    if core_techniques:
-        lines.append("\n## 核心方法\n")
-        for tech in core_techniques:
-            lines.append(f"- {tech}")
-
-    field_tags = summary.get("field_tags", [])
-    content_tags = summary.get("content_tags", [])
-    technique_tags = summary.get("technique_tags", [])
-
-    if field_tags or content_tags or technique_tags:
-        lines.append("\n## 多维标签\n")
-        if field_tags:
-            lines.append(f"- **领域**: {', '.join(field_tags)}")
-        if content_tags:
-            lines.append(f"- **内容**: {', '.join(content_tags)}")
-        if technique_tags:
-            lines.append(f"- **方法**: {', '.join(technique_tags)}")
+    # References
+    references = structure.get("references", [])
+    if references:
+        lines.append("## References")
+        ref_texts = sorted(set(ref.get("text", "") for ref in references))
+        for ref_text in ref_texts[:20]:  # Show first 20 unique references
+            lines.append(f"- [{ref_text}]")
+        if len(ref_texts) > 20:
+            lines.append(f"... and {len(ref_texts) - 20} more references")
 
     return "\n".join(lines)
+
+
+def extract_structure_from_ocr(ocr_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convenience function for structure extraction.
+
+    Args:
+        ocr_data: Output from OCRExtractor.extract()
+
+    Returns:
+        Extracted structure
+    """
+    return extract_structure(ocr_data)
