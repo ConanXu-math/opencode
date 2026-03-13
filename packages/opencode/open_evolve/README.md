@@ -67,13 +67,41 @@ system = AutoEvaluatorSystem()
 result = system.auto_evolve(code, iterations=50)
 ```
 
-### 在opencode中
+### 命令行接口
+
+```bash
+# 统一接口优化
+python -m open_evolve.main my_code.py --iteration 50 --outdir optimized
+
+# 代码分析模式
+python -m open_evolve.main "def fibonacci(n): return n if n <= 1 else fibonacci(n-1) + fibonacci(n-2)" --mode analyze
+
+# 算法发现模式
+python -m open_evolve.main sorting_algorithm.py --mode discover --iteration 100
+```
+
+### 在opencode中（推荐）
+
+#### 使用 Unified Agent
+
+```
+@openevolve-unified fibonacci.py
+@openevolve-unified slow_algorithm.py --iteration 100 --outdir optimized_results
+@openevolve-unified complex_code.py --mode analyze
+```
+
+#### 查看帮助
+
+```
+@openevolve-unified
+@openevolve-unified --help
+```
+
+#### 传统方式
 
 ```
 @openevolve levenshtein_optimization.py
-
 @openevolve slow_algorithm.py --iteration 100 --outdir optimized_results
-
 @openevolve 请分析并优化这段斐波那契数列算法
 ```
 
@@ -81,3 +109,37 @@ result = system.auto_evolve(code, iterations=50)
 
 - `../openevolve_fixed_config.yaml` - 配置文件
 - `docs/` - 完整文档
+- `../.opencode/agents/openevolve-unified.md` - Unified Agent 配置文件
+- `../.opencode/agents/openevolve-unified-README.md` - Unified Agent 详细使用指南
+
+## 🆕 OpenEvolve Unified Agent
+
+### 特性
+
+- **统一接口**：简化参数传递
+- **友好提示**：无参数时显示详细帮助
+- **智能处理**：自动识别文件和代码片段
+- **完整文档**：包含示例和故障排除
+
+### 快速参考
+
+```
+@openevolve-unified <file.py> [--iteration <n>] [--outdir <path>] [--mode <mode>]
+
+参数：
+  <file.py>   要优化的Python文件（必需）
+  -i, --iteration  迭代次数（默认：50）
+  -o, --outdir     输出目录（默认：optimized_<timestamp>）
+  -m, --mode       模式：optimize/analyze/discover（默认：optimize）
+
+示例：
+  @openevolve-unified fibonacci.py
+  @openevolve-unified sorting.py -i 100 -o ./optimized -m discover
+```
+
+### 获取帮助
+
+```
+@openevolve-unified
+@openevolve-unified --help
+```
