@@ -1,33 +1,15 @@
-"""Two-phase structure extraction for math papers: regex + LLM refinement.
+"""Structure extraction for math papers using regex patterns only.
 
-Phase 1: Fast regex scanning to identify sections, theorems, proofs,
-         definitions, and display equations from OCR text.
-Phase 2: LLM call to validate, fix, and enrich the regex results
-         (e.g. theorem-proof linkage, section assignment, summary).
+This module extracts sections, theorems, definitions, proofs, and equations
+from OCR text using regex patterns. No LLM integration.
 """
 
-import json
-import logging
 import re
-from typing import Any, Optional, Dict, List
+import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-
-def _fix_json_escapes(s: str) -> str:
-    """Fix invalid JSON escape sequences caused by LaTeX backslashes.
-
-    LLM output often contains raw LaTeX like \\subseteq or \\mathbb inside
-    JSON strings.  These are not valid JSON escapes and cause json.loads()
-    to fail.  This function doubles any backslash that is NOT already part
-    of a legal JSON escape (\\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t, \\uXXXX).
-    """
-    try:
-        json.loads(s)
-        return s
-    except json.JSONDecodeError:
-        pass
-    return re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", s)
 
 
 # ── Phase 1: Regex patterns ───────────────────────────────────────
