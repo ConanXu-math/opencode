@@ -11,7 +11,7 @@ from pathlib import Path
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
-from paper_analyzer import PaperAnalyzer, create_analyzer_from_env
+from paper_pipeline import PaperPipeline, create_pipeline_from_env
 
 
 def example_basic_usage():
