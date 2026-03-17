@@ -17,18 +17,7 @@ ts-dist
 /result
 refs
 Session.vim
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 /opencode.json
-=======
-# opencode.json
->>>>>>> 95310f06b (chore: update .gitignore files and improve path handling in config.ts)
-=======
-/opencode.json
->>>>>>> 34ac49527 (feat(app): missing themes (#17275))
-=======
->>>>>>> 280568cd6 (chore: update .gitignore files and improve path handling in config.ts)
 a.out
 target
 .scripts
