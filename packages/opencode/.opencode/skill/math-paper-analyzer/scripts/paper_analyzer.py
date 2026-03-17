@@ -1,42 +1,24 @@
-"""Unified paper analysis pipeline for math papers.
+"""Legacy paper analyzer module - kept for backward compatibility.
 
-Provides three analysis modes:
-1. Fast mode: OCR + regex structure extraction only
-2. Standard mode: OCR + regex + LLM structure refinement
-3. Deep mode: OCR + full structure + LLM summary generation
+This module provides backward compatibility with the old API.
+New code should use paper_pipeline.PaperPipeline instead.
 """
 
-import os
-import logging
-import tempfile
+import warnings
+from typing import Dict, Any, Optional
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
-from datetime import datetime
 
-# Local imports
-try:
-    from .ocr_pdf_reader import OcrPDFReader
-    from .structure_extractor import (
-        extract_paper_structure,
-        extract_paper_summary,
-        format_structure_for_display,
-        format_summary_for_display,
-    )
-except ImportError:
-    # Fallback for direct script execution
-    from ocr_pdf_reader import OcrPDFReader
-    from structure_extractor import (
-        extract_paper_structure,
-        extract_paper_summary,
-        format_structure_for_display,
-        format_summary_for_display,
-    )
+from .paper_pipeline import PaperPipeline
 
-logger = logging.getLogger(__name__)
+warnings.warn(
+    "PaperAnalyzer is deprecated. Use PaperPipeline from paper_pipeline module instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class PaperAnalyzer:
-    """Main paper analysis pipeline."""
+    """Deprecated paper analyzer. Use PaperPipeline instead."""
 
     def __init__(
         self,
@@ -47,34 +29,20 @@ class PaperAnalyzer:
         temp_dir: Optional[str] = None,
     ):
         """
-        Initialize paper analyzer.
+        Initialize paper analyzer (deprecated).
 
-        Args:
-            ocr_url: OCR API endpoint
-            llm_api_key: OpenAI API key (optional for standard/deep modes)
-            llm_base_url: OpenAI compatible API base URL
-            llm_model: Model ID
-            temp_dir: Temporary directory for processing
+        Note: LLM parameters are ignored in the refactored version.
+        LLM analysis is handled by opencode, not this Python module.
         """
-        self.ocr_url = ocr_url
-        self.llm_api_key = llm_api_key
-        self.llm_base_url = llm_base_url
-        self.llm_model = llm_model
-        self.temp_dir = (
-            Path(temp_dir)
-            if temp_dir
-            else Path(tempfile.gettempdir()) / "math-paper-analyzer"
-        )
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-
-        self.ocr_reader = OcrPDFReader(
-            ocr_url=ocr_url,
-            dpi=200,
-            max_workers=4,
-            request_timeout=60.0,
+        warnings.warn(
+            "PaperAnalyzer is deprecated. LLM parameters are ignored. "
+            "Use PaperPipeline instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
-        self.has_llm = bool(llm_api_key and llm_base_url and llm_model)
+        self.pipeline = PaperPipeline(ocr_url=ocr_url, temp_dir=temp_dir)
+        self.has_llm = False  # LLM analysis is handled by opencode
 
     def analyze(
         self,
@@ -84,336 +52,171 @@ class PaperAnalyzer:
         output_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Analyze a math paper.
+        Analyze a math paper (deprecated).
 
-        Args:
-            pdf_path: Path to PDF file, or PDF bytes
-            mode: Analysis mode: "fast", "standard", "deep"
-            save_output: Whether to save output to files
-            output_dir: Directory to save output (default: temp_dir)
-
-        Returns:
-            Dictionary with analysis results
+        Note: 'mode' parameter is ignored in refactored version.
+        All analysis uses the same extraction pipeline.
+        LLM analysis is handled separately by opencode.
         """
-        start_time = datetime.now()
+        warnings.warn(
+            f"'mode' parameter ({mode}) is ignored. "
+            "All extraction uses the same pipeline. "
+            "LLM analysis is handled by opencode.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-        # Validate mode
-        if mode not in ["fast", "standard", "deep"]:
-            raise ValueError(
-                f"Invalid mode: {mode}. Must be 'fast', 'standard', or 'deep'"
+        if isinstance(pdf_path, bytes):
+            raise NotImplementedError(
+                "PDF bytes input not supported in refactored version. "
+                "Save to file first."
             )
 
-        # Check LLM availability for standard/deep modes
-        if mode in ["standard", "deep"] and not self.has_llm:
-            logger.warning("LLM not configured, falling back to fast mode")
-            mode = "fast"
-
-        logger.info("Starting %s analysis", mode)
-
-        # Step 1: OCR
-        logger.info("Step 1: OCR processing")
         try:
-            if isinstance(pdf_path, bytes):
-                pages = self.ocr_reader.read_bytes(pdf_path)
-                paper_source = "bytes"
+            if save_output:
+                result = self.pipeline.extract_and_save(pdf_path, output_dir)
             else:
-                pdf_path = Path(pdf_path)
-                if not pdf_path.exists():
-                    raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-                pages = self.ocr_reader.read(pdf_path)
-                paper_source = str(pdf_path)
+                result = self.pipeline.extract(pdf_path)
+
+            # Convert to old format for compatibility
+            return self._convert_to_old_format(result, mode)
+
         except Exception as e:
-            logger.error("OCR failed: %s", e)
             return {
                 "success": False,
-                "error": f"OCR failed: {str(e)}",
+                "error": str(e),
                 "mode": mode,
-                "timestamp": start_time.isoformat(),
             }
 
-        # Step 2: Structure extraction
-        logger.info("Step 2: Structure extraction")
-        try:
-            if mode == "fast":
-                structure = extract_paper_structure(pages)
-            else:
-                structure = extract_paper_structure(
-                    pages,
-                    llm_api_key=self.llm_api_key,
-                    llm_base_url=self.llm_base_url,
-                    llm_model=self.llm_model,
-                )
-        except Exception as e:
-            logger.error("Structure extraction failed: %s", e)
-            return {
-                "success": False,
-                "error": f"Structure extraction failed: {str(e)}",
-                "ocr_pages": len(pages),
-                "mode": mode,
-                "timestamp": start_time.isoformat(),
-            }
+    def _convert_to_old_format(
+        self, result: Dict[str, Any], mode: str
+    ) -> Dict[str, Any]:
+        """Convert new format to old format for backward compatibility."""
+        formatted_text = result.get("formatted_text", "")
 
-        # Step 3: Summary generation (deep mode only)
-        summary = None
-        if mode == "deep":
-            logger.info("Step 3: Summary generation")
-            try:
-                # Check LLM configuration is available
-                if self.llm_api_key and self.llm_base_url and self.llm_model:
-                    # Assert for type checker
-                    assert self.llm_api_key is not None
-                    assert self.llm_base_url is not None
-                    assert self.llm_model is not None
-                    summary = extract_paper_summary(
-                        pages,
-                        structure,
-                        llm_api_key=self.llm_api_key,
-                        llm_base_url=self.llm_base_url,
-                        llm_model=self.llm_model,
-                    )
-                else:
-                    logger.warning("LLM not configured for summary generation")
-            except Exception as e:
-                logger.error("Summary generation failed: %s", e)
-                # Continue without summary
-
-        # Step 4: Format output
-        logger.info("Step 4: Formatting output")
-        structure_md = format_structure_for_display(structure)
-
-        summary_md = None
-        if summary:
-            summary_md = format_summary_for_display(summary)
-            full_md = f"{summary_md}\n\n{structure_md}"
-        else:
-            full_md = structure_md
-
-        # Prepare result
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-
-        result = {
+        return {
             "success": True,
             "mode": mode,
-            "paper_source": paper_source,
-            "pages": len(pages),
-            "structure": structure,
-            "summary": summary,
-            "markdown": full_md,
-            "structure_markdown": structure_md,
-            "summary_markdown": summary_md if summary else None,
-            "timestamp": start_time.isoformat(),
-            "duration_seconds": duration,
-            "has_llm": self.has_llm,
+            "has_llm": False,  # LLM handled by opencode
+            "pages": result.get("metadata", {}).get("pages", 0),
+            "duration_seconds": result.get("metadata", {}).get("duration_seconds", 0),
+            "paper_source": result.get("metadata", {}).get("source", ""),
+            "structure": result.get("structure", {}),
+            "formatted_text": formatted_text,
+            "markdown": formatted_text,  # Alias for backward compatibility
+            "output_files": result.get("output_files", {}),
         }
-
-        # Save output if requested
-        if save_output:
-            self._save_output(result, output_dir)
-
-        logger.info("Analysis completed in %.1f seconds", duration)
-        return result
-
-    def _save_output(
-        self, result: Dict[str, Any], output_dir: Optional[str] = None
-    ) -> None:
-        """Save analysis results to files."""
-        if output_dir:
-            output_path = Path(output_dir)
-        else:
-            output_path = self.temp_dir / "output"
-
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Generate filename
-        if (
-            isinstance(result["paper_source"], str)
-            and result["paper_source"] != "bytes"
-        ):
-            paper_name = Path(result["paper_source"]).stem
-        else:
-            paper_name = f"paper_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        # Save markdown
-        md_file = output_path / f"{paper_name}_analysis.md"
-        with open(md_file, "w", encoding="utf-8") as f:
-            f.write(result["markdown"])
-
-        # Save JSON data
-        import json
-
-        json_file = output_path / f"{paper_name}_data.json"
-        # Convert to serializable format
-        json_data = {
-            "success": result["success"],
-            "mode": result["mode"],
-            "paper_source": result["paper_source"],
-            "pages": result["pages"],
-            "structure": result["structure"],
-            "summary": result["summary"],
-            "timestamp": result["timestamp"],
-            "duration_seconds": result["duration_seconds"],
-            "has_llm": result["has_llm"],
-        }
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(json_data, f, ensure_ascii=False, indent=2)
-
-        result["output_files"] = {
-            "markdown": str(md_file),
-            "json": str(json_file),
-        }
-
-        logger.info("Output saved to: %s", output_path)
 
     def analyze_multiple(
         self,
-        pdf_paths: list[str | Path],
-        mode: str = "standard",
-        parallel: bool = False,
-        max_workers: int = 4,
-    ) -> list[Dict[str, Any]]:
+        pdf_paths: list,
+        mode: str = "fast",
+        parallel: bool = True,
+        max_workers: int = 2,
+    ) -> list:
         """
-        Analyze multiple papers.
-
-        Args:
-            pdf_paths: List of PDF file paths
-            mode: Analysis mode
-            parallel: Whether to process in parallel
-            max_workers: Maximum parallel workers
-
-        Returns:
-            List of analysis results
+        Analyze multiple papers (deprecated).
         """
-        if parallel:
-            # Simple parallel processing
-            import concurrent.futures
+        warnings.warn(
+            "analyze_multiple is deprecated. Use pipeline.batch_extract instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-            results = []
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                future_to_path = {
-                    executor.submit(self.analyze, path, mode, save_output=False): path
-                    for path in pdf_paths
-                }
-                for future in concurrent.futures.as_completed(future_to_path):
-                    try:
-                        result = future.result()
-                        results.append(result)
-                    except Exception as e:
-                        path = future_to_path[future]
-                        logger.error("Analysis failed for %s: %s", path, e)
-                        results.append(
-                            {
-                                "success": False,
-                                "error": str(e),
-                                "paper_source": str(path),
-                                "mode": mode,
-                            }
-                        )
-            return results
-        else:
-            # Sequential processing
-            results = []
-            for path in pdf_paths:
-                try:
-                    result = self.analyze(path, mode, save_output=False)
-                    results.append(result)
-                except Exception as e:
-                    logger.error("Analysis failed for %s: %s", path, e)
-                    results.append(
-                        {
-                            "success": False,
-                            "error": str(e),
-                            "paper_source": str(path),
-                            "mode": mode,
-                        }
-                    )
-            return results
+        results = self.pipeline.batch_extract(pdf_paths, parallel=parallel)
+
+        # Convert to old format
+        old_format_results = []
+        for result in results:
+            if "error" in result.get("metadata", {}):
+                old_format_results.append(
+                    {
+                        "success": False,
+                        "error": result["metadata"]["error"],
+                        "paper_source": result["metadata"]["source"],
+                    }
+                )
+            else:
+                old_format_results.append(self._convert_to_old_format(result, mode))
+
+        return old_format_results
 
 
-def create_analyzer_from_env() -> PaperAnalyzer:
-    """Create PaperAnalyzer from environment variables."""
-    ocr_url = os.getenv("MATH_PAPER_OCR_URL", "https://edusys5.sii.edu.cn/ocr")
-    llm_api_key = os.getenv("MATH_PAPER_LLM_API_KEY")
-    llm_base_url = os.getenv("MATH_PAPER_LLM_BASE_URL")
-    llm_model = os.getenv("MATH_PAPER_LLM_MODEL")
+def create_analyzer_from_env():
+    """Create PaperAnalyzer from environment variables (deprecated)."""
+    warnings.warn(
+        "create_analyzer_from_env is deprecated. "
+        "Use paper_pipeline.create_pipeline_from_env instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    # Fallback to OpenAI env vars
-    if not llm_api_key:
-        llm_api_key = os.getenv("OPENAI_API_KEY")
-    if not llm_base_url:
-        llm_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    if not llm_model:
-        llm_model = os.getenv("OPENAI_MODEL", "gpt-4o")
+    from .paper_pipeline import create_pipeline_from_env as create_pipeline
 
+    pipeline = create_pipeline()
+
+    # Create PaperAnalyzer wrapper
     return PaperAnalyzer(
-        ocr_url=ocr_url,
-        llm_api_key=llm_api_key,
-        llm_base_url=llm_base_url,
-        llm_model=llm_model,
+        ocr_url=pipeline.ocr_url,
+        temp_dir=str(pipeline.temp_dir) if pipeline.temp_dir else None,
     )
 
 
+# Keep old CLI function for backward compatibility
 def analyze_paper_cli():
-    """Command-line interface for paper analysis."""
-    import argparse
+    """Command-line interface for paper analysis (deprecated)."""
+    warnings.warn(
+        "analyze_paper_cli is deprecated. Use cli.main() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    parser = argparse.ArgumentParser(description="Analyze math papers")
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="Analyze math papers (deprecated)")
     parser.add_argument("pdf_path", help="Path to PDF file")
     parser.add_argument(
         "--mode",
         choices=["fast", "standard", "deep"],
         default="standard",
-        help="Analysis mode (default: standard)",
+        help="Analysis mode (ignored in refactored version)",
     )
     parser.add_argument("--output-dir", help="Output directory")
     parser.add_argument(
         "--ocr-url", default="https://edusys5.sii.edu.cn/ocr", help="OCR API URL"
     )
-    parser.add_argument("--llm-api-key", help="LLM API key")
-    parser.add_argument("--llm-base-url", help="LLM base URL")
-    parser.add_argument("--llm-model", help="LLM model")
+
+    # LLM args are kept for compatibility but ignored
+    parser.add_argument("--llm-api-key", help="LLM API key (ignored)")
+    parser.add_argument("--llm-base-url", help="LLM base URL (ignored)")
+    parser.add_argument("--llm-model", help="LLM model (ignored)")
 
     args = parser.parse_args()
 
-    # Create analyzer
-    analyzer = PaperAnalyzer(
-        ocr_url=args.ocr_url,
-        llm_api_key=args.llm_api_key,
-        llm_base_url=args.llm_base_url,
-        llm_model=args.llm_model,
-    )
+    # Warn about ignored parameters
+    if args.llm_api_key or args.llm_base_url or args.llm_model:
+        print(
+            "Warning: LLM parameters are ignored. LLM analysis is handled by opencode."
+        )
 
-    # Analyze
-    result = analyzer.analyze(
-        pdf_path=args.pdf_path,
-        mode=args.mode,
-        save_output=True,
-        output_dir=args.output_dir,
-    )
+    if args.mode != "standard":
+        print(
+            f"Warning: Mode '{args.mode}' is ignored. Using standard extraction pipeline."
+        )
 
-    if result["success"]:
-        print(f"Analysis completed successfully!")
-        print(f"Mode: {result['mode']}")
-        print(f"Pages: {result['pages']}")
-        print(f"Duration: {result['duration_seconds']:.1f} seconds")
-        if "output_files" in result:
-            print(f"Markdown output: {result['output_files']['markdown']}")
-            print(f"JSON data: {result['output_files']['json']}")
+    # Use new CLI
+    from .cli import main as cli_main
 
-        # Print summary if available
-        if result.get("summary_markdown"):
-            print("\n" + "=" * 80)
-            print(result["summary_markdown"])
-    else:
-        print(f"Analysis failed: {result.get('error', 'Unknown error')}")
-        return 1
+    # Build arguments for new CLI
+    sys.argv = ["cli", "extract", args.pdf_path]
+    if args.output_dir:
+        sys.argv.extend(["--output-dir", args.output_dir])
+    if args.ocr_url and args.ocr_url != "https://edusys5.sii.edu.cn/ocr":
+        sys.argv.extend(["--ocr-url", args.ocr_url])
 
-    return 0
+    return cli_main()
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(analyze_paper_cli())
+    analyze_paper_cli()
