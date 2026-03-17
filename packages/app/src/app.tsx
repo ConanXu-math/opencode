@@ -158,7 +158,7 @@ export function AppBaseProviders(props: ParentProps) {
 const effectMinDuration =
   (duration: Duration.Input) =>
   <A, E, R>(e: Effect.Effect<A, E, R>) =>
-    Effect.all([e, Effect.sleep(duration)], { concurrency: "unbounded" }).pipe(Effect.map((v) => v[0]))
+    Effect.all([e, Effect.sleep(duration)], { concurrency: "unbounded" }).pipe(Effect.map(([a]) => a))
 
 function ConnectionGate(props: ParentProps<{ disableHealthCheck?: boolean }>) {
   const server = useServer()

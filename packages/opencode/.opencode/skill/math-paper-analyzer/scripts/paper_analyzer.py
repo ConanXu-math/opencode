@@ -13,13 +13,24 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 
-from .ocr_pdf_reader import OcrPDFReader
-from .structure_extractor import (
-    extract_paper_structure,
-    extract_paper_summary,
-    format_structure_for_display,
-    format_summary_for_display,
-)
+# Local imports
+try:
+    from .ocr_pdf_reader import OcrPDFReader
+    from .structure_extractor import (
+        extract_paper_structure,
+        extract_paper_summary,
+        format_structure_for_display,
+        format_summary_for_display,
+    )
+except ImportError:
+    # Fallback for direct script execution
+    from ocr_pdf_reader import OcrPDFReader
+    from structure_extractor import (
+        extract_paper_structure,
+        extract_paper_summary,
+        format_structure_for_display,
+        format_summary_for_display,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +158,21 @@ class PaperAnalyzer:
         if mode == "deep":
             logger.info("Step 3: Summary generation")
             try:
-                summary = extract_paper_summary(
-                    pages,
-                    structure,
-                    llm_api_key=self.llm_api_key,
-                    llm_base_url=self.llm_base_url,
-                    llm_model=self.llm_model,
-                )
+                # Check LLM configuration is available
+                if self.llm_api_key and self.llm_base_url and self.llm_model:
+                    # Assert for type checker
+                    assert self.llm_api_key is not None
+                    assert self.llm_base_url is not None
+                    assert self.llm_model is not None
+                    summary = extract_paper_summary(
+                        pages,
+                        structure,
+                        llm_api_key=self.llm_api_key,
+                        llm_base_url=self.llm_base_url,
+                        llm_model=self.llm_model,
+                    )
+                else:
+                    logger.warning("LLM not configured for summary generation")
             except Exception as e:
                 logger.error("Summary generation failed: %s", e)
                 # Continue without summary
@@ -162,6 +181,7 @@ class PaperAnalyzer:
         logger.info("Step 4: Formatting output")
         structure_md = format_structure_for_display(structure)
 
+        summary_md = None
         if summary:
             summary_md = format_summary_for_display(summary)
             full_md = f"{summary_md}\n\n{structure_md}"
