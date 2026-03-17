@@ -9,7 +9,7 @@ import logging
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -130,7 +130,8 @@ class OCRExtractor:
             page_images.append((page_idx, b64_png))
 
         # OCR in parallel
-        pages_data = [None] * total_pages
+        pages_data: List[Optional[Dict[str, Any]]] = [None] * total_pages
+
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(self._ocr_single_page, idx, img): idx
@@ -140,11 +141,15 @@ class OCRExtractor:
                 page_idx, text = future.result()
                 # Extract LaTeX formulas from text
                 formulas = self._extract_formulas(text)
-                pages_data[page_idx] = {
+                page_data = {
                     "number": page_idx + 1,
                     "text": text,
                     "formulas": formulas,
                 }
+                pages_data[page_idx] = page_data
+
+        # Filter out None values (shouldn't happen, but just in case)
+        pages_data = [page for page in pages_data if page is not None]
 
         doc.close()
 
@@ -233,7 +238,7 @@ class OCRExtractor:
         }
 
 
-def extract_ocr(pdf_path: str, ocr_url: str = None) -> Dict[str, Any]:
+def extract_ocr(pdf_path: str, ocr_url: Optional[str] = None) -> Dict[str, Any]:
     """
     Convenience function for OCR extraction.
 

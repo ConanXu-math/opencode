@@ -47,7 +47,9 @@ export class Instances extends ServiceMap.Service<Instances, LayerMap.LayerMap<s
   static readonly layer = Layer.effect(
     Instances,
     Effect.gen(function* () {
-      const layerMap = yield* LayerMap.make(lookup, { idleTimeToLive: Infinity })
+      const layerMap = (yield* LayerMap.make(lookup, {
+        idleTimeToLive: Infinity,
+      })) as unknown as LayerMap.LayerMap<string, InstanceServices>
       const unregister = registerDisposer((directory) => Effect.runPromise(layerMap.invalidate(directory)))
       yield* Effect.addFinalizer(() => Effect.sync(unregister))
       return Instances.of(layerMap)

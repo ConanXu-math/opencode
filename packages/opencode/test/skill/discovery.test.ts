@@ -48,7 +48,11 @@ afterAll(async () => {
 
 describe("Discovery.pull", () => {
   const pull = (url: string) =>
-    Effect.runPromise(DiscoveryService.use((s) => s.pull(url)).pipe(Effect.provide(DiscoveryService.defaultLayer)))
+    Effect.runPromise(
+      DiscoveryService.use((s) => s.pull(url)).pipe(
+        Effect.provide(DiscoveryService.defaultLayer),
+      ) as Effect.Effect<string[], any, never>,
+    )
 
   test("downloads skills from cloudflare url", async () => {
     const dirs = await pull(CLOUDFLARE_SKILLS_URL)
@@ -114,3 +118,4 @@ describe("Discovery.pull", () => {
     expect(downloadCount).toBe(firstCount)
   })
 })
+
