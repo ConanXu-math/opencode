@@ -18,12 +18,32 @@
 - 七维摘要生成（标题、摘要、证明思路、核心方法、三维标签）
 - Markdown格式结构化输出
 
-## 快速开始
+## 快速开始（零配置）
 
-### 安装依赖
+### 一键使用
 
 ```bash
-pip install pymupdf openai httpx
+# 完全自动（推荐）
+python scripts/auto_analyzer.py your_paper.pdf
+
+# 指定深度分析
+python scripts/auto_analyzer.py your_paper.pdf deep
+
+# 交互式设置向导
+python scripts/interactive_setup.py
+```
+
+### 传统方式（手动配置）
+
+```bash
+# 安装依赖
+pip install pymupdf httpx
+
+# 快速模式（无需LLM）
+python scripts/cli.py your_paper.pdf --mode fast
+
+# 标准/深度模式（需要LLM配置）
+python scripts/cli.py your_paper.pdf --mode standard
 ```
 
 ### 命令行使用
@@ -43,7 +63,20 @@ python scripts/cli.py your_paper.pdf --mode deep \
   --llm-base-url https://api.openai.com/v1
 ```
 
-### Python API使用
+### Python API使用（自动配置）
+
+```python
+from scripts.auto_analyzer import AutoMathPaperAnalyzer
+
+# 零配置使用
+analyzer = AutoMathPaperAnalyzer()
+results = analyzer.analyze("paper.pdf", mode="deep")
+
+if "error" not in results:
+    print(results["output"]["full_report"])
+```
+
+### Python API使用（手动配置）
 
 ```python
 from scripts.paper_analyzer import MathPaperAnalyzer
@@ -59,8 +92,6 @@ results = analyzer.analyze_paper(
     mode="deep",
     save_output=True,
 )
-
-print(results["output"]["full_report"])
 ```
 
 ## 输出示例
